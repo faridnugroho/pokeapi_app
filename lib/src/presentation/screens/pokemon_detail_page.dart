@@ -4,6 +4,8 @@ import 'package:pokeapi_app/src/data/repositories/pokemon_species_repository.dar
 import 'package:pokeapi_app/src/domain/entities/pokemon_detail_model.dart';
 import 'package:pokeapi_app/src/domain/entities/pokemon_species_model.dart' as sp;
 import 'package:pokeapi_app/src/utils/color_helper.dart';
+import 'package:pokeapi_app/src/domain/entities/evolution_chain_model.dart' as evo;
+import 'package:pokeapi_app/src/data/repositories/evolution_chain_repository.dart';
 
 class PokemonDetailPage extends StatelessWidget {
   final String name;
@@ -124,16 +126,24 @@ class PokemonDetailPage extends StatelessWidget {
                             child: Column(
                               children: [
                                 const SizedBox(height: 30),
-                                const TabBar(
-                                  tabAlignment: TabAlignment.center,
-                                  indicatorColor: Colors.blue,
-                                  labelColor: Colors.black,
-                                  tabs: [
-                                    Tab(text: "About"),
-                                    Tab(text: "Base Stats"),
-                                    Tab(text: "Evolution"),
-                                    Tab(text: "Moves"),
-                                  ],
+                                Theme(
+                                  data: Theme.of(context).copyWith(
+                                    splashFactory: InkRipple.splashFactory,
+                                    highlightColor: ((gradient?.colors.first) ?? Colors.teal).withValues(alpha: 0.1),
+                                    splashColor: ((gradient?.colors.first) ?? Colors.teal).withValues(alpha: 0.2),
+                                  ),
+                                  child: TabBar(
+                                    tabAlignment: TabAlignment.center,
+                                    indicatorColor: (gradient?.colors.first) ?? Colors.teal,
+                                    labelColor: Colors.black,
+                                    unselectedLabelColor: Colors.grey,
+                                    tabs: const [
+                                      Tab(text: "About"),
+                                      Tab(text: "Base Stats"),
+                                      Tab(text: "Evolution"),
+                                      Tab(text: "Moves"),
+                                    ],
+                                  ),
                                 ),
                                 Expanded(
                                   child: TabBarView(
@@ -143,8 +153,11 @@ class PokemonDetailPage extends StatelessWidget {
                                         stats: data.stats ?? [],
                                         accent: (gradient?.colors.first) ?? Colors.teal, // selaraskan warna
                                       ),
-                                      const Center(child: Text("Evolution Tab")),
-                                      const Center(child: Text("Moves Tab")),
+                                      _EvolutionTab(species: species),
+                                      _MovesTab(
+                                        moves: data.moves ?? [],
+                                        accent: (gradient?.colors.first) ?? Colors.teal,
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -297,6 +310,344 @@ class _BaseStatsTab extends StatelessWidget {
           _row(context, 'Speed', _val('speed')),
         ],
       ),
+    );
+  }
+}
+
+class _EvolutionTab extends StatelessWidget {
+  final sp.PokemonSpeciesModel species;
+
+  const _EvolutionTab({required this.species});
+
+  Future<List<_EvolutionNode>> _buildEvolutionNodes() async {
+    final chainUrl = species.evolutionChain?.url;
+    if (chainUrl == null || chainUrl.isEmpty) return [];
+
+    final repo = EvolutionChainRepository();
+    final evoData = await repo.fetchByUrl(chainUrl);
+
+    final List<_EvolutionNode> result = [];
+
+    void traverse(evo.ChainLink? link) {
+      if (link == null || link.species?.name == null) return;
+      final current = _EvolutionNode(
+        name: link.species!.name!,
+        minLevel:
+            link.evolutionDetails != null && link.evolutionDetails!.isNotEmpty
+                ? link.evolutionDetails!.first.minLevel
+                : null,
+        trigger:
+            link.evolutionDetails != null && link.evolutionDetails!.isNotEmpty
+                ? link.evolutionDetails!.first.trigger?.name
+                : null,
+      );
+      result.add(current);
+      if (link.evolvesTo != null) {
+        for (final child in link.evolvesTo!) {
+          traverse(child);
+        }
+      }
+    }
+
+    traverse(evoData.chain);
+    return result;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<_EvolutionNode>>(
+      future: _buildEvolutionNodes(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const Center(child: Text('Failed to load evolution'));
+        }
+        final nodes = snapshot.data ?? [];
+        if (nodes.isEmpty) {
+          return const Center(child: Text('No evolution data'));
+        }
+
+        // Vertical list of evolution cards with down arrows
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: nodes.length,
+          separatorBuilder:
+              (context, index) => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Center(child: Icon(Icons.arrow_downward, color: Colors.black54)),
+              ),
+          itemBuilder: (context, index) {
+            return _EvolutionCard(node: nodes[index]);
+          },
+        );
+      },
+    );
+  }
+}
+
+class _EvolutionNode {
+  final String name;
+  final int? minLevel;
+  final String? trigger;
+
+  _EvolutionNode({required this.name, this.minLevel, this.trigger});
+}
+
+class _EvolutionCard extends StatelessWidget {
+  final _EvolutionNode node;
+  const _EvolutionCard({required this.node});
+
+  @override
+  Widget build(BuildContext context) {
+    final displayName = node.name[0].toUpperCase() + node.name.substring(1);
+    return Container(
+      height: 100,
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 32,
+            backgroundColor: Colors.white,
+            child: Image.network(
+              "https://img.pokemondb.net/sprites/home/normal/${node.name}.png",
+              height: 56,
+              errorBuilder: (c, e, s) => const Icon(Icons.catching_pokemon),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                if (node.minLevel != null || (node.trigger ?? '').isNotEmpty)
+                  Text(
+                    [
+                      if (node.minLevel != null) "Lvl ${node.minLevel}",
+                      if ((node.trigger ?? '').isNotEmpty) node.trigger!,
+                    ].join(' • '),
+                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MovesTab extends StatefulWidget {
+  final List<Move> moves;
+  final Color accent;
+
+  const _MovesTab({required this.moves, required this.accent});
+
+  @override
+  State<_MovesTab> createState() => _MovesTabState();
+}
+
+class _MovesTabState extends State<_MovesTab> {
+  String? _selectedMethod; // null = All
+  // Only filter by method
+
+  List<_MoveRow> _buildRows() {
+    final List<_MoveRow> rows = [];
+    for (final m in widget.moves) {
+      final moveName = m.move?.name ?? '';
+      final details = m.versionGroupDetails ?? [];
+      for (final d in details) {
+        final method = d.moveLearnMethod?.name ?? '';
+        final version = d.versionGroup?.name ?? '';
+        rows.add(_MoveRow(moveName: moveName, method: method, versionGroup: version, level: d.levelLearnedAt ?? 0));
+      }
+    }
+
+    // Deduplicate by moveName+method+versionGroup
+    final seen = <String>{};
+    final deduped = <_MoveRow>[];
+    for (final r in rows) {
+      final key = '${r.moveName}|${r.method}|${r.versionGroup}';
+      if (seen.add(key)) deduped.add(r);
+    }
+
+    // Filtering
+    final filtered =
+        deduped.where((r) {
+          final methodOk = _selectedMethod == null || r.method == _selectedMethod;
+          return methodOk;
+        }).toList();
+
+    // Sort by level asc, then by move name
+    filtered.sort((a, b) {
+      final lvl = (a.level).compareTo(b.level);
+      if (lvl != 0) return lvl;
+      return a.moveName.compareTo(b.moveName);
+    });
+    return filtered;
+  }
+
+  Color _getComplementaryColor(Color color) {
+    // Get complementary color by inverting RGB values
+    return Color.fromARGB(color.a.toInt(), 255 - color.r.toInt(), 255 - color.g.toInt(), 255 - color.b.toInt());
+  }
+
+  List<String> _availableMethods() {
+    final set = <String>{};
+    for (final m in widget.moves) {
+      for (final d in (m.versionGroupDetails ?? [])) {
+        final name = d.moveLearnMethod?.name;
+        if (name != null && name.isNotEmpty) set.add(name);
+      }
+    }
+    final list = set.toList()..sort();
+    return list;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final methods = _availableMethods();
+    final rows = _buildRows();
+
+    return Column(
+      children: [
+        // Filters
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  ChoiceChip(
+                    label: const Text('All Methods'),
+                    selected: _selectedMethod == null,
+                    onSelected: (selected) {
+                      setState(() {
+                        _selectedMethod = null;
+                      });
+                    },
+                    selectedColor: widget.accent.withValues(alpha: 0.8),
+                    labelStyle: TextStyle(
+                      color: _selectedMethod == null ? Colors.white : Colors.black87,
+                      fontWeight: _selectedMethod == null ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                    shape: StadiumBorder(
+                      side: BorderSide(color: _selectedMethod == null ? widget.accent : Colors.grey.shade300),
+                    ),
+                    backgroundColor: Colors.grey.shade100,
+                  ),
+                  for (final m in methods)
+                    ChoiceChip(
+                      label: Text(m.replaceAll('-', ' ')),
+                      selected: _selectedMethod == m,
+                      onSelected: (selected) {
+                        setState(() {
+                          _selectedMethod = m;
+                        });
+                      },
+                      selectedColor: widget.accent.withValues(alpha: 0.8),
+                      labelStyle: TextStyle(
+                        color: _selectedMethod == m ? Colors.white : Colors.black87,
+                        fontWeight: _selectedMethod == m ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                      shape: StadiumBorder(
+                        side: BorderSide(color: _selectedMethod == m ? widget.accent : Colors.grey.shade300),
+                      ),
+                      backgroundColor: Colors.grey.shade100,
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        const Divider(height: 1),
+
+        // List
+        Expanded(
+          child:
+              rows.isEmpty
+                  ? const Center(child: Text('No moves'))
+                  : ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: rows.length,
+                    separatorBuilder: (_, __) => const Divider(height: 16),
+                    itemBuilder: (context, index) {
+                      final r = rows[index];
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  r.moveName[0].toUpperCase() + r.moveName.substring(1),
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    _Chip(text: r.method.replaceAll('-', ' ')),
+                                    _Chip(text: r.versionGroup.replaceAll('-', ' ')),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(
+                            width: 64,
+                            child: Text(
+                              r.level > 0 ? 'Lvl ${r.level}' : '—',
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(color: Colors.black54),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MoveRow {
+  final String moveName;
+  final String method;
+  final String versionGroup;
+  final int level;
+
+  _MoveRow({required this.moveName, required this.method, required this.versionGroup, required this.level});
+}
+
+class _Chip extends StatelessWidget {
+  final String text;
+  const _Chip({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(999)),
+      child: Text(text, style: const TextStyle(fontSize: 12)),
     );
   }
 }
