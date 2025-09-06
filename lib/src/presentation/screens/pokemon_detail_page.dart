@@ -497,11 +497,6 @@ class _MovesTabState extends State<_MovesTab> {
     return filtered;
   }
 
-  Color _getComplementaryColor(Color color) {
-    // Get complementary color by inverting RGB values
-    return Color.fromARGB(color.a.toInt(), 255 - color.r.toInt(), 255 - color.g.toInt(), 255 - color.b.toInt());
-  }
-
   List<String> _availableMethods() {
     final set = <String>{};
     for (final m in widget.moves) {
@@ -527,49 +522,28 @@ class _MovesTabState extends State<_MovesTab> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Row(
             children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  ChoiceChip(
-                    label: const Text('All Methods'),
-                    selected: _selectedMethod == null,
-                    onSelected: (selected) {
-                      setState(() {
-                        _selectedMethod = null;
-                      });
-                    },
-                    selectedColor: widget.accent.withValues(alpha: 0.8),
-                    labelStyle: TextStyle(
-                      color: _selectedMethod == null ? Colors.white : Colors.black87,
-                      fontWeight: _selectedMethod == null ? FontWeight.w600 : FontWeight.w400,
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _CustomFilterChip(
+                      label: 'All Methods',
+                      isSelected: _selectedMethod == null,
+                      onTap: () => setState(() => _selectedMethod = null),
+                      accentColor: widget.accent,
                     ),
-                    shape: StadiumBorder(
-                      side: BorderSide(color: _selectedMethod == null ? widget.accent : Colors.grey.shade300),
-                    ),
-                    backgroundColor: Colors.grey.shade100,
-                  ),
-                  for (final m in methods)
-                    ChoiceChip(
-                      label: Text(m.replaceAll('-', ' ')),
-                      selected: _selectedMethod == m,
-                      onSelected: (selected) {
-                        setState(() {
-                          _selectedMethod = m;
-                        });
-                      },
-                      selectedColor: widget.accent.withValues(alpha: 0.8),
-                      labelStyle: TextStyle(
-                        color: _selectedMethod == m ? Colors.white : Colors.black87,
-                        fontWeight: _selectedMethod == m ? FontWeight.w600 : FontWeight.w400,
+                    const SizedBox(width: 8),
+                    for (final m in methods) ...[
+                      _CustomFilterChip(
+                        label: m.replaceAll('-', ' '),
+                        isSelected: _selectedMethod == m,
+                        onTap: () => setState(() => _selectedMethod = m),
+                        accentColor: widget.accent,
                       ),
-                      shape: StadiumBorder(
-                        side: BorderSide(color: _selectedMethod == m ? widget.accent : Colors.grey.shade300),
-                      ),
-                      backgroundColor: Colors.grey.shade100,
-                    ),
-                ],
+                      const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -648,6 +622,44 @@ class _Chip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(999)),
       child: Text(text, style: const TextStyle(fontSize: 12)),
+    );
+  }
+}
+
+class _CustomFilterChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final Color accentColor;
+
+  const _CustomFilterChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    required this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? accentColor.withValues(alpha: 0.8) : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: isSelected ? accentColor : Colors.grey.shade300, width: 1),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.black87,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+            fontSize: 14,
+          ),
+        ),
+      ),
     );
   }
 }
